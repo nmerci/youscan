@@ -1,8 +1,4 @@
-# Vlad Khizanov
-
-raffaello <- read.csv("data/raffaello.csv", encoding = "UTF-8")
-maggi <- read.csv("data/maggi.csv", encoding = "UTF-8")
-nutrilon <- read.csv("data/nutrilon.csv", encoding = "UTF-8")
+# YouScan Task
 
 process_mention_sentiment <- function(mention_sentiment)
 {
@@ -19,9 +15,10 @@ process_source_url <- function(source_url)
 {
   #group factors with less than "negl_sources" entries
   negl_sources <- 100
-  sources <- as.data.frame(table(source_url))
-  sources <- c(as.vector(sources[sources[, 2] > negl_sources, 1]), "other")
   
+  sources <- as.data.frame(table(source_url))
+  sources <- c(as.vector(sources[sources[, 2] > negl_sources, 1]), 
+               "other")
   
   su <- matrix(0, length(source_url), length(sources))
   for(i in 1:length(source_url))
@@ -68,8 +65,39 @@ process_date_time <- function(date_time)
   date_time <- strptime(date_time, "%Y-%m-%dT%H:%M:%S")
 }
 
+process_text_length <- function(mention_title, mention_text)
+{
+  mtt <- nchar(cbind(as.vector(mention_title), as.vector(mention_text)))
+  colnames(mtt) <- c("title_length", "text_length")
+  
+  mtt
+}
 
+create_dictionary <- function(mention_title, mention_text, spam)
+{
+  #coercing
+  mention_title <- as.vector(mention_title)
+  mention_text <- as.vector(mention_text)
+  
+  #get unique words in spam messages
+  dict <- unique(unlist(strsplit(c(mention_title[spam==1], mention_text[spam==1]), " ")))
+  #retain only printable symbols and convert them to lower-case
+  dict <- unique(tolower(gsub("[^0-9A-Za-zА-Яа-я]", "", dict)))
+  #remove all URLs from dictionary
+  dict <- dict[!grepl("id|club[0-9]{6}", dict)]
+  dict <- dict[!grepl("http|www|googl|instag", dict)]
+  #remove too short and too long words
+  dict <- dict[nchar(dict) > 2 & nchar(dict) < 15]
+  
+  dict
+}
 
+process_text <- function(mention_title, mention_text, dictionary)
+{
+  
+  
+  
+}
 
 
 
@@ -86,7 +114,17 @@ process_data <- function(raw_data)
   data <- cbind(data, log_author_readers=process_author_readers(raw_data$author_readers))
   data <- cbind(data, creation_date=as.numeric(process_date_time(raw_data$mention_creationdate)))
   data <- cbind(data, modification_date=as.numeric(process_date_time(raw_data$author_modificationdate)))
+  data <- cbind(data, process_text_length(raw_data$mention_title, raw_data$mention_text))
 }
+
+
+
+
+
+
+
+
+
 
 separate_train_test_data <- function(data, test_fraction)
 {
@@ -100,19 +138,24 @@ separate_train_test_data <- function(data, test_fraction)
 
 
 ############################################################################
+library(e1071)
+
 
 raw_data <- read.csv("data/maggi.csv", encoding = "UTF-8")
-raw_data <- rbind(raw_data, read.csv("data/raffaello.csv", encoding = "UTF-8"))
-raw_data <- rbind(raw_data, read.csv("data/nutrilon.csv", encoding = "UTF-8"))
+#raw_data <- rbind(raw_data, read.csv("data/raffaello.csv", encoding = "UTF-8"))
+#raw_data <- rbind(raw_data, read.csv("data/nutrilon.csv", encoding = "UTF-8"))
 
 data <- process_data(raw_data)
 s_data <- separate_train_test_data(data, 0.3)
 
 
 #model <- naiveBayes(as.factor(spam)~., data=s_data$train)
-model <- svm(spam~., data=s_data$train, type="C", cost=10000, gamma=0.1)
+model <- svm(spam~., data=s_data$train, type="C", cost=200, gamma=0.05263158)
 prediction <- predict(model, s_data$test[, -1])
-table(pred=prediction, true=s_data$test$spam)
+tab <- table(pred=prediction, true=s_data$test$spam)
+
+acc <- c(acc, (tab[1, 1] + tab[2, 2]) / 1306)
+type1 <- c(type1, tab[2, 1] / 1306)
 
 
 
