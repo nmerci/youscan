@@ -2,39 +2,43 @@
 
 process_mention_sentiment <- function(mention_sentiment)
 {
+  #one-hot encoding
   ms <- matrix(0, length(mention_sentiment), 3)
+  colnames(ms) <- c("negative", "neutral", "positive")
   for(i in 1:length(mention_sentiment))
     if(mention_sentiment[i] > -2)
       ms[i, mention_sentiment[i] + 2] <- 1
   
-  colnames(ms) <- c("negative", "neutral", "positive")
+  
   ms
 }
 
 process_source_url <- function(source_url)
 {
-  #group factors with less than "negl_sources" entries
+  #group factors with less than @negl_sources entries
+  #in "other" factor
   negl_sources <- 100
   
   sources <- as.data.frame(table(source_url))
-  sources <- c(as.vector(sources[sources[, 2] > negl_sources, 1]), 
-               "other")
+  sources <- c(as.vector(sources[sources[, 2] > negl_sources, 1]), "other")
   
+  #one-hot encoding
   su <- matrix(0, length(source_url), length(sources))
+  colnames(su) <- sources
   for(i in 1:length(source_url))
     su[i, match(source_url[i], sources, length(sources))] <- 1
   
-  colnames(su) <- sources
   su
 }
 
 process_author_type <- function(author_type)
 {
+  #one-hot encoding
   at <- matrix(0, length(author_type), 3)
+  colnames(at) <- c("person", "siteadmin", "community")
   for(i in 1:length(author_type))
     at[i, log2(author_type[i])] <- 1
   
-  colnames(at) <- c("person", "siteadmin", "community")
   at
 }
 
@@ -44,6 +48,8 @@ process_author_mention_image <- function(author_image, mention_image)
   author_image <- as.vector(author_image)
   mention_image <- as.vector(mention_image)
   
+  #one-hot encoding ("1" corresponds to existence of 
+  #an URL, "0" stays for absence)
   author_image[!is.na(author_image)] <- 1
   author_image[is.na(author_image)] <- 0
   
@@ -56,7 +62,9 @@ process_author_mention_image <- function(author_image, mention_image)
 
 process_author_readers <- function(author_readers)
 {
+  #prevents negative values in logarithm
   author_readers[author_readers < 1] <- 1
+  
   log(author_readers)
 }
 
@@ -73,30 +81,26 @@ process_text_length <- function(mention_title, mention_text)
   mtt
 }
 
-create_dictionary <- function(mention_title, mention_text, spam)
+process_text <- function(mention_title, mention_text, spam)
 {
-  #coercing
-  mention_title <- as.vector(mention_title)
-  mention_text <- as.vector(mention_text)
+  #process text
+  text <- paste(as.vector(mention_title), as.vector(mention_text))
+  text <- strsplit(text, " ")
+  text <- lapply(text, gsub, pattern="[^0-9A-Za-zА-Яа-я]", replacement="")
+  text <- lapply(text, tolower)
   
-  #get unique words in spam messages
-  dict <- unique(unlist(strsplit(c(mention_title[spam==1], mention_text[spam==1]), " ")))
-  #retain only printable symbols and convert them to lower-case
-  dict <- unique(tolower(gsub("[^0-9A-Za-zА-Яа-я]", "", dict)))
-  #remove all URLs from dictionary
-  dict <- dict[!grepl("id|club[0-9]{6}", dict)]
-  dict <- dict[!grepl("http|www|googl|instag", dict)]
-  #remove too short and too long words
-  dict <- dict[nchar(dict) > 2 & nchar(dict) < 15]
+  #create dictionary
+  dict <- sort(unique(unlist(text[as.vector(spam) == 1])))
+  dict <- dict[nchar(dict) < 15]
   
-  dict
-}
-
-process_text <- function(mention_title, mention_text, dictionary)
-{
+  #create feature matrix
+  m <- matrix(0, length(text), length(dict))
+  colnames(m) <- paste(dict, "_d")
   
+  for(i in 1:length(text))
+    m[i, which(dict %in% text[[i]])] <- 1
   
-  
+  m
 }
 
 
@@ -115,6 +119,7 @@ process_data <- function(raw_data)
   data <- cbind(data, creation_date=as.numeric(process_date_time(raw_data$mention_creationdate)))
   data <- cbind(data, modification_date=as.numeric(process_date_time(raw_data$author_modificationdate)))
   data <- cbind(data, process_text_length(raw_data$mention_title, raw_data$mention_text))
+  data <- cbind(data, process_text(raw_data$mention_title, raw_data$mention_text, raw_data$author_excluded))
 }
 
 
