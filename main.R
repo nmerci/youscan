@@ -116,9 +116,9 @@ process_data <- function(raw_data, supp_data=list(source_url_list=numeric(), dic
   
   #create feature matrix
   data <- data.frame(spam=raw_data$author_excluded)
+  #data <- data.frame(deleted=raw_data$mention_deleted)
   data <- cbind(data, processed_text$data)
   data <- cbind(data, process_mention_sentiment(raw_data$mention_sentiment))
-  data <- cbind(data, deleted=raw_data$mention_deleted)
   data <- cbind(data, process_source_url(raw_data$source_url, supp_data$source_url_list))
   data <- cbind(data, process_author_type(raw_data$author_type))
   data <- cbind(data, process_author_mention_image(raw_data$author_image, raw_data$mention_image))
@@ -137,9 +137,19 @@ separate_train_test_data <- function(data, validation_frac, test_frac)
 }
 
 #read raw data from a file
-raw_data <- read.csv("data/maggi.csv", encoding = "UTF-8")
-#raw_data <- rbind(raw_data, read.csv("data/raffaello.csv", encoding = "UTF-8"))
-#raw_data <- rbind(raw_data, read.csv("data/nutrilon.csv", encoding = "UTF-8"))
+
+
+raw_data_maggi <- cbind(read.csv("data/maggi-all.csv", encoding = "UTF-8"), data.frame(maggi=1, raffaello=0, nutrilon=0))
+raw_data_raffaello <- cbind(read.csv("data/raffaello-all.csv", encoding = "UTF-8"), data.frame(maggi=0, raffaello=1, nutrilon=0))
+raw_data_nutrilon <- cbind(read.csv("data/nutrilon-all.csv", encoding = "UTF-8"), data.frame(maggi=0, raffaello=0, nutrilon=1))
+
+
+
+raw_data <- data.frame()
+raw_data <- rbind(raw_data, raw_data_maggi)
+raw_data <- rbind(raw_data, raw_data_raffaello)
+raw_data <- rbind(raw_data, raw_data_nutrilon)
+
 
 #separate data for train (80%) and test (20%) sets 
 data <- separate_train_test_data(raw_data, 0, 0.2)
@@ -189,7 +199,7 @@ tune_svm <- function(train)
       {
         model <- svm(x=data$train[, -1], y=data$train[, 1], type="C", kernel = "radial", cost=cost_range[i], gamma=gamma_range[j])
         pred <- predict(model, data$validation[, -1])
-        tab <- table(true=data$validation$spam, pred=pred)
+        tab <- table(true=data$validation[, 1], pred=pred)
         f_score[i, j, iter] <- 2 * tab[2, 2] / (2 * tab[2, 2] + tab[1, 2] + tab[2, 1])
       }
   }
@@ -212,7 +222,7 @@ tune_rf <- function(train)
     {
       model <- randomForest(x=data$train[, -1], y=as.factor(data$train[, 1]), mtry=mtry_range[i])
       pred <- predict(model, data$validation[, -1])
-      tab <- table(true=data$validation$spam, pred=pred)
+      tab <- table(true=data$validation[, 1], pred=pred)
       f_score[i, iter] <- 2 * tab[2, 2] / (2 * tab[2, 2] + tab[1, 2] + tab[2, 1])
     }
   }
@@ -222,20 +232,20 @@ tune_rf <- function(train)
 
 #test algorithms
 #k-nearest neighbour
-pred <- knn(train[, -1], test[, -1], train[, 1], k=1)
-tab <- table(true=test$spam, pred=pred)
+pred <- knn(train[, -1], test[, -1], train[, 1], k=10)
+tab <- table(true=test[complete.cases(test), 1], pred=pred)
 print(tab)
 
 #SVM
 model_svm <- svm(x=train[, -1], y=train[, 1], type="C", cost=2048, gamma=0.00390625, probability=T)
-pred <- predict(model_svm, test[, -1], probability=T)
-tab <- table(true=test$spam, pred=pred)
+pred <- predict(model_svm, test[, -1], probability=F)
+tab <- table(true=test[, 1], pred=pred)
 print(tab)
 
 #random forest
-model_frst <- randomForest(x=train[, -1], y=as.factor(train[, 1]), ntree=500, nodesize = 1, mtry=8)
-pred <- predict(model_frst, test[, -1])
-tab <- table(true=test$spam, pred=pred)
+model_frst <- randomForest(x=train[, -1], y=as.factor(train[, 1]), ntree=500, nodesize = 1, mtry=8, proximity=T, importance=T)
+pred <- predict(model_frst, test[complete.cases(test), -1])
+tab <- table(true=test[complete.cases(test), 1], pred=pred)
 print(tab)
 
 
